@@ -1,0 +1,2 @@
+configs/a0_unet_scratch_bce_legacy_masks.yaml 1
+configs/a0_unet_scratch_bce_legacy_masks.yaml 3

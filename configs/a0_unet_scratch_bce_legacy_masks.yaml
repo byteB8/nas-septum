@@ -1,0 +1,10 @@
+# Setting A trained on the 2024 targets (Label Studio strokes thresholded at >127),
+# evaluated against the corrected centrelines like every other setting
+model: unet_scratch
+loss: bce
+train_masks: masks_legacy
+context: 1
+epochs: 100
+batch_size: 16
+lr: 3.0e-4
+weight_decay: 1.0e-4
