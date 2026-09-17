@@ -1,0 +1,4 @@
+configs/a_unet_scratch_bce.yaml 0
+configs/d_resnet34_cldice.yaml 1
+configs/a_unet_scratch_bce.yaml 3
+configs/d_resnet34_cldice.yaml 3
