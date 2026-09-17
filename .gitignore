@@ -1,0 +1,8 @@
+# patient-derived CT crops and model outputs stay out of the repo
+data/
+results/
+results_*/
+logs/
+*.pt
+__pycache__/
+*.pyc
