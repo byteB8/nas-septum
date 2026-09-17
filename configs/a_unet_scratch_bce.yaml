@@ -1,0 +1,8 @@
+# Original 2024 U-Net and loss, with the fixed masks and scan-level split
+model: unet_scratch
+loss: bce
+context: 1
+epochs: 100
+batch_size: 16
+lr: 3.0e-4
+weight_decay: 1.0e-4

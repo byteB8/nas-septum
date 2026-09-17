@@ -1,0 +1,10 @@
+# + 2.5D input: previous / current / next slice of the same scan
+model: smp_unet
+encoder: resnet34
+loss: bce_dice_cldice
+cldice_weight: 0.5
+context: 3
+epochs: 100
+batch_size: 16
+lr: 3.0e-4
+weight_decay: 1.0e-4

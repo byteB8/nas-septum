@@ -1,0 +1,9 @@
+# ImageNet-pretrained ResNet34 encoder
+model: smp_unet
+encoder: resnet34
+loss: bce_dice
+context: 1
+epochs: 100
+batch_size: 16
+lr: 3.0e-4
+weight_decay: 1.0e-4
