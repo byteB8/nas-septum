@@ -19,6 +19,8 @@ IIT(ISM) Dhanbad).
   per-slice mean absolute error **0.72 px**.
 - **Found and fixed a label-processing bug** in the 2024 pipeline: thresholding the
   anti-aliased Label Studio strokes at >127 broke 71% of traces into dashes and emptied 80 masks.
+  A U-Net trained on those masks never outputs a probability above 0.5 and finds the septum on
+  0.6% of slices at the default threshold; trained on the fixed masks it finds it on all of them.
 - **~2 ms per slice** inference; about 10 min to train one fold on an RTX A4000.
 
 ## Data
@@ -35,8 +37,23 @@ IIT(ISM) Dhanbad).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/figures/label_fix-dark.png">
-  <img alt="The same trace thresholded at >127 (dashed) and >0 (continuous), and the share of traces kept as one line" src="docs/figures/label_fix-light.png">
+  <img alt="The same trace thresholded at >127 (dashed) and >0 (continuous), the share of traces kept as one line, and centreline F1 across probability thresholds for U-Nets trained on each" src="docs/figures/label_fix-light.png">
 </picture>
+
+**What the fix changes.** The same U-Net (setting A) was trained on both versions of the
+masks, with the same folds, and scored against the corrected centrelines:
+
+| Trained on | Median max probability | Slices detected at 0.5 | F1@2px at 0.5 | Best threshold* | F1@2px there | clDice there |
+|---|---|---|---|---|---|---|
+| > 127 masks (2024) | 0.44 | 0.6% | 0.001 | 0.05 | 0.953 | 0.842 |
+| > 0 masks (fixed) | 0.99 | 100% | **0.958** | 0.2 | **0.960** | **0.925** |
+
+\*Chosen on the test predictions, so optimistic for both.
+
+The broken masks do not stop the network learning where the septum is: its probabilities still
+peak along it. They leave it badly calibrated, so it predicts nothing at the default
+threshold, which the 2024 pixel-accuracy metric (99%, mostly background) did not reveal. Even at
+its most favourable threshold its centrelines are less continuous (clDice 0.84 vs 0.93).
 
 ### Data availability
 
@@ -54,6 +71,7 @@ research use on request; please open an issue or contact the author.
 
 | | Model | Loss | Input |
 |---|---|---|---|
+| A0 | U-Net from scratch, trained on the 2024 > 127 masks | BCE | slice |
 | A | U-Net from scratch (the 2024 architecture) | BCE | slice |
 | B | U-Net from scratch | BCE + Dice | slice |
 | C | U-Net, ImageNet ResNet34 encoder | BCE + Dice | slice |
@@ -77,13 +95,15 @@ A 1-px shift halves the overlap of a thin structure, so overlap alone misleads.
 
 | | F1@2px | clDice | Dice (band) | Centreline dist (px) | HD95 (px) | Deviation MAE (px) | Scan deviation r | Fragmented | Train / fold | Inference |
 |---|---|---|---|---|---|---|---|---|---|---|
+| A0 (A on > 127 masks) | 0.001 | 0.000 | 0.000 | - | - | - | - | - | 16 min | 3.5 ms |
 | A | **0.958** ± 0.009 | 0.880 ± 0.038 | 0.728 | **0.89** ± 0.13 | 2.79 | 0.71 | 0.82 | 3.3% | 26 min | 5.2 ms |
 | B | 0.956 ± 0.007 | **0.887** ± 0.023 | **0.732** | 0.91 ± 0.11 | 2.82 | **0.69** | 0.88 | 4.6% | 26 min | 6.9 ms |
 | C | 0.953 ± 0.021 | 0.871 ± 0.051 | 0.719 | 0.93 ± 0.23 | 2.71 | **0.69** | 0.87 | 2.6% | **8 min** | 2.1 ms |
 | D | 0.956 ± 0.013 | 0.881 ± 0.041 | 0.726 | 0.91 ± 0.20 | **2.65** | 0.72 | **0.92** | **1.4%** | 10 min | 2.0 ms |
 | E | 0.954 ± 0.018 | 0.883 ± 0.031 | 0.728 | 0.91 ± 0.20 | 2.78 | 0.71 | 0.86 | 2.3% | **8 min** | **1.6 ms** |
 
-Mean over all 899 out-of-fold slices ± standard deviation of the 5 fold means. "Fragmented" is
+Mean over all 899 out-of-fold slices ± standard deviation of the 5 fold means, at threshold 0.5.
+A0 detects the septum on 0.6% of slices, so distance and deviation scores are undefined. "Fragmented" is
 the share of slices whose raw prediction splits into more than one piece. Training times are
 per fold on an RTX A4000 (A, B) and a mix of A4000 / A5000 (C-E), so they are indicative.
 
@@ -136,6 +156,7 @@ python prepare_data.py                                  # data/final-v4 -> data/
 python train.py --config configs/d_resnet34_cldice.yaml --fold 0
 scripts/run_queue.sh <gpu> scripts/jobs_s0a.txt         # a resumable queue of (config, fold) jobs
 python aggregate.py                                     # results/summary.md
+python threshold_sweep.py                               # results/threshold_sweep.csv
 python readme_figures.py --best d_resnet34_cldice       # docs/figures/*
 ```
 

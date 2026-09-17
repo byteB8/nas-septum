@@ -165,56 +165,61 @@ def fig_label_fix(t, mode, ctx):
     img = np.array(Image.open(img_path).convert("L"))
     by, bx = crop_box(raw > 0, 6, 14, img.shape)
 
-    fig = plt.figure(figsize=(11.5, 3.9))
-    gs = fig.add_gridspec(1, 4, width_ratios=[1, 1, 0.25, 2.1], wspace=0.08)
-    for i, (thr, title) in enumerate([(127, "Threshold > 127 (2024)"), (0, "Threshold > 0 (fixed)")]):
+    fig = plt.figure(figsize=(12.5, 3.9))
+    gs = fig.add_gridspec(1, 6, width_ratios=[0.85, 0.85, 0.08, 1.2, 0.28, 1.75], wspace=0.1)
+    for i, (thr, title) in enumerate([(127, "Stroke > 127 (2024)"), (0, "Stroke > 0 (fixed)")]):
         ax = fig.add_subplot(gs[0, i])
-        ax.imshow(paint(rgb(img), raw > thr, t["s1"], 1.0)[by, bx], interpolation="nearest")
+        ax.imshow(paint(rgb(img), raw > thr, t["s1"] if thr == 0 else t["s2"], 1.0)[by, bx],
+                  interpolation="nearest", aspect="auto")
         ax.set_title(title, fontsize=10)
         ax.set_xticks([]), ax.set_yticks([])
         ax.grid(False)
-        for s in ax.spines.values():
-            s.set_visible(False)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
 
     ax = fig.add_subplot(gs[0, 3])
-    rows = [("Traces kept as one\ncontinuous line", share[127], share[0], "%", 100)]
-    s = ctx["summary"].set_index("config")
-    if {"a0_unet_scratch_bce_legacy_masks", "a_unet_scratch_bce"} <= set(s.index):
-        rows.append(("U-Net centreline F1\nwithin 2 px",
-                     100 * s.loc["a0_unet_scratch_bce_legacy_masks", "f1_tol"],
-                     100 * s.loc["a_unet_scratch_bce", "f1_tol"], "%", 100))
-    y = np.arange(len(rows))[::-1] * 1.25
-    h = 0.3
-    for yi, (lab, before, after, unit, _) in zip(y, rows):
-        ax.text(0, yi + h + 0.2, lab.replace("\n", " "), va="bottom", color=t["ink"], fontsize=9.5)
-        ax.barh(yi + h / 2 + 0.02, before, height=h, color=t["fold"])
-        ax.barh(yi - h / 2 - 0.02, after, height=h, color=t["s1"])
-        ax.text(before + 1.5, yi + h / 2 + 0.02, f"{before:.1f}{unit}", va="center", color=t["ink2"], fontsize=9)
-        ax.text(after + 1.5, yi - h / 2 - 0.02, f"{after:.1f}{unit}", va="center", color=t["ink"],
-                fontsize=9, fontweight="bold")
-    ax.set_yticks([])
-    ax.set_ylim(y.min() - 0.6, y.max() + 0.75)
-    ax.spines["left"].set_visible(False)
-    ax.set_xlim(0, 112)
-    ax.set_xticks([0, 25, 50, 75, 100])
-    ax.grid(axis="y", visible=False)
-    ax.tick_params(axis="y", length=0)
-    ax.legend(handles=[Patch(color=t["fold"], label="> 127 (2024)"), Patch(color=t["s1"], label="> 0 (fixed)")],
-              loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=2)
-    ax.set_title("Effect of the fix")
+    vals = [(share[127], t["s2"], "> 127"), (share[0], t["s1"], "> 0")]
+    ax.bar([0, 1], [v for v, _, _ in vals], width=0.6, color=[c for _, c, _ in vals])
+    for xi, (v, _, _) in enumerate(vals):
+        ax.text(xi, v + 2, f"{v:.0f}%", ha="center", va="bottom", fontsize=9.5, color=t["ink"],
+                fontweight="bold" if xi else "normal")
+    ax.set_xticks([0, 1], [lab for _, _, lab in vals])
+    ax.set_ylim(0, 112)
+    ax.set_yticks([0, 25, 50, 75, 100])
+    ax.grid(axis="x", visible=False)
+    ax.set_title("Traces kept as one line")
+
+    sweep_path = os.path.join(ctx["results"], "threshold_sweep.csv")
+    ax = fig.add_subplot(gs[0, 5])
+    if os.path.exists(sweep_path):
+        sw = pd.read_csv(sweep_path)
+        for cfg, color, lab in (("a0_unet_scratch_bce_legacy_masks", t["s2"], "Trained on > 127 masks"),
+                                ("a_unet_scratch_bce", t["s1"], "Trained on fixed masks")):
+            d = sw[sw.config == cfg].sort_values("threshold")
+            ax.plot(d.threshold, d.f1_tol, color=color, lw=2, marker="o", ms=5, label=lab)
+        ax.axvline(0.5, color=t["muted"], lw=1)
+        ax.text(0.47, 0.04, "default\nthreshold", ha="right", va="bottom", fontsize=8.5, color=t["ink2"])
+        ax.set_xscale("log")
+        ax.set_xticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5"])
+        ax.minorticks_off()
+        ax.set_ylim(0, 1.02)
+        ax.set(xlabel="Probability threshold", ylabel="Centreline F1 @ 2 px")
+        ax.legend(loc="lower left", fontsize=8.5)
+        ax.set_title("Same U-Net, scored across thresholds")
     save(fig, ctx["out"], "label_fix", mode)
 
 
 def fig_ablation(t, mode, ctx):
     """Per-fold scores for every setting, folds joined to show they are paired."""
     df, s = ctx["df"], ctx["summary"]
-    order = [c for c in SHORT if c in set(df.config)]
+    # A0 (legacy masks) predicts nothing at 0.5 and is shown in the label-fix figure instead
+    order = [c for c in SHORT if c in set(df.config) and c != "a0_unet_scratch_bce_legacy_masks"]
     x = np.arange(len(order))
     fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.1), gridspec_kw=dict(wspace=0.28))
     for ax, (k, title, fmt) in zip(axes, [("f1_tol", "Centreline F1 within 2 px (higher is better)", "{:.3f}"),
                                           ("cl_mean_dist", "Mean centreline distance, px (lower is better)",
                                            "{:.2f}")]):
-        fm = df.groupby(["config", "fold"])[k].mean().unstack()
+        fm = df[df.config.isin(order)].groupby(["config", "fold"])[k].mean().unstack()
         for fold in fm.columns:
             vals = [fm.loc[c, fold] if c in fm.index else np.nan for c in order]
             ax.plot(x, vals, color=t["fold"], lw=1, marker="o", ms=3.5, zorder=2)
@@ -321,7 +326,7 @@ def main():
     summary = pd.read_csv(os.path.join(args.results, "summary.csv"))
     best = args.best or summary[summary.config != "a0_unet_scratch_bce_legacy_masks"].sort_values(
         "f1_tol").iloc[-1].config
-    ctx = dict(df=df, summary=summary, data=args.data, src=args.src, out=args.out,
+    ctx = dict(df=df, summary=summary, data=args.data, src=args.src, out=args.out, results=args.results,
                best_df=df[df.config == best], best_preds=load_preds(args.results, best))
     print("best config:", best, LABELS[best])
     for mode, t in THEMES.items():
