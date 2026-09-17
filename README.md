@@ -17,6 +17,11 @@ pre/post-septoplasty flow studies.
   thresholding at >0 keeps 98% as one continuous line. Targets are therefore the traced
   centreline (skeleton of mask > 0), dilated to a 3-px band for training.
 
+### Data availability
+
+The CT crops and annotations are not included in this repository. They can be shared for
+research use on request; please open an issue or contact the author.
+
 ## Method
 
 - 5-fold cross-validation **grouped by scan**: no series contributes slices to both training
